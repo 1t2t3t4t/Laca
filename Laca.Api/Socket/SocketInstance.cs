@@ -3,9 +3,11 @@ using System.Text;
 
 namespace Laca.Api.Socket;
 
-public class SocketInstance(WebSocket webSocket)
+public class SocketInstance(Guid id, WebSocket webSocket)
 {
-    private const uint BufferSize = 1024 * 4;  
+    private const uint BufferSize = 1024 * 4;
+
+    public Guid Id => id;
     
     public async Task Run()
     {
@@ -36,7 +38,7 @@ public class SocketInstance(WebSocket webSocket)
             CancellationToken.None);
     }
 
-    private async Task SendMessageString(string text)
+    public async Task SendMessageString(string text)
     {
         var textBytes = Encoding.UTF8.GetBytes(text);
         await webSocket.SendAsync(textBytes, WebSocketMessageType.Text, true, CancellationToken.None);

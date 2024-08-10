@@ -1,4 +1,5 @@
 using Laca.Api.Middleware;
+using Laca.Api.Socket;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -10,6 +11,8 @@ builder.Services.AddControllers(options =>
 {
     options.EnableEndpointRouting = false;
 });
+
+builder.Services.AddSingleton<ISocketManager, SocketManager>();
 builder.Services.AddScoped<WebSocketMiddleware>();
 
 var app = builder.Build();
