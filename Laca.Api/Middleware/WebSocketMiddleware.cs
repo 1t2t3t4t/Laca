@@ -14,7 +14,7 @@ public class WebSocketMiddleware(ISocketManager socketManager) : IMiddleware
         if (webSocketContext.IsWebSocketRequest)
         {
             var webSocket = await webSocketContext.AcceptWebSocketAsync();
-            var instance = new SocketInstance(Guid.NewGuid(), webSocket);
+            var instance = new SocketInstance(Guid.NewGuid(), webSocket, SocketManager);
             SocketManager.Register(instance);
             await instance.Run();
         }

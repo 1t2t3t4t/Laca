@@ -11,15 +11,6 @@ public class SocketMessage<T>
 {
     public SocketAction Action { get; init; }
     public required T Content { get; init; }
-
-    public static SocketMessage<CommitMessage> CommitMessage(CommitMessage content)
-    {
-        return new SocketMessage<CommitMessage>
-        {
-            Action = SocketAction.CommitMessage,
-            Content = content
-        };
-    }
 }
 
 public enum Role

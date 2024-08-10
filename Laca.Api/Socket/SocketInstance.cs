@@ -6,7 +6,7 @@ using Laca.Api.Models;
 
 namespace Laca.Api.Socket;
 
-public class SocketInstance(Guid id, WebSocket webSocket)
+public class SocketInstance(Guid id, WebSocket webSocket, ISocketManager socketManager)
 {
     private const uint BufferSize = 1024 * 4;
     private static readonly JsonNamingPolicy NamingPolicy = JsonNamingPolicy.CamelCase;
@@ -50,6 +50,7 @@ public class SocketInstance(Guid id, WebSocket webSocket)
             status,
             description,
             CancellationToken.None);
+        socketManager.DeRegister(this);
     }
 
     public async Task SendMessage<T>(SocketMessage<T> message)
@@ -62,7 +63,7 @@ public class SocketInstance(Guid id, WebSocket webSocket)
         await SendMessageString(content);
     }
 
-    public async Task SendMessageString(string text)
+    private async Task SendMessageString(string text)
     {
         var textBytes = Encoding.UTF8.GetBytes(text);
         await webSocket.SendAsync(textBytes, WebSocketMessageType.Text, true, CancellationToken.None);
