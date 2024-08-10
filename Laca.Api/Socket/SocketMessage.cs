@@ -1,12 +1,26 @@
 using System.Net.WebSockets;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Laca.Api.Models;
 
 namespace Laca.Api.Socket;
 
 public class SocketInstance(Guid id, WebSocket webSocket)
 {
     private const uint BufferSize = 1024 * 4;
+    private static readonly JsonNamingPolicy NamingPolicy = JsonNamingPolicy.CamelCase;
 
+    private static readonly JsonSerializerOptions SerializerOptions = new()
+    {
+        PropertyNamingPolicy = NamingPolicy,
+        Converters =
+        {
+            new JsonStringEnumConverter<Role>(NamingPolicy),
+            new JsonStringEnumConverter<SocketAction>(NamingPolicy)
+        }
+    };
+    
     public Guid Id => id;
     
     public async Task Run()
@@ -36,6 +50,16 @@ public class SocketInstance(Guid id, WebSocket webSocket)
             status,
             description,
             CancellationToken.None);
+    }
+
+    public async Task SendMessage<T>(SocketMessage<T> message)
+    {
+        using var memStream = new MemoryStream();
+        await JsonSerializer.SerializeAsync(memStream, message, SerializerOptions);
+        memStream.Seek(0, SeekOrigin.Begin);
+        using var reader = new StreamReader(memStream, Encoding.UTF8);
+        var content = await reader.ReadToEndAsync();
+        await SendMessageString(content);
     }
 
     public async Task SendMessageString(string text)

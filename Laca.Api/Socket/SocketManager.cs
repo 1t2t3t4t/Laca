@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Laca.Api.Models;
 
 namespace Laca.Api.Socket;
 
@@ -20,6 +21,10 @@ public class SocketManager : ISocketManager
         }
 
         Console.WriteLine("Has connection");
-        instance.SendMessageString("Hello Welcome!!");
+        instance.SendMessage(SocketMessage<CommitMessage>.CommitMessage(new CommitMessage
+        {
+            Role = Role.Bot,
+            Message = "Hello Welcome!!!"
+        }));
     }
 }

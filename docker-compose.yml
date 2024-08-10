@@ -4,3 +4,6 @@
     build:
       context: .
       dockerfile: Laca.Api/Dockerfile
+    expose:
+      - 8080
+      - 8081
