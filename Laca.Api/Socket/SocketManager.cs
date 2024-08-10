@@ -11,6 +11,7 @@ public interface ISocketManager
 
 public class SocketManager : ISocketManager
 {
+    // Socket Guid -> Socket Instance
     private readonly ConcurrentDictionary<Guid, SocketInstance> _connectedInstances = new();
 
     public async void Register(SocketInstance instance)
