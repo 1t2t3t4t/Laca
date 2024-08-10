@@ -1,0 +1,6 @@
+﻿services:
+  laca.api:
+    image: laca.api
+    build:
+      context: .
+      dockerfile: Laca.Api/Dockerfile
