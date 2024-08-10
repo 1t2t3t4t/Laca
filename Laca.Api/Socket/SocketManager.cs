@@ -23,11 +23,7 @@ public class SocketManager : ISocketManager
         }
 
         Console.WriteLine($"Has connection {instance.Id}");
-        await instance.SendMessage(SocketMessageHelper.CommitMessage(new CommitMessage
-        {
-            Role = Role.Bot,
-            Message = "Hello Welcome!!!"
-        }));
+        await instance.SendMessage(SocketMessageHelper.CommitMessage(Role.Bot, "Hello Welcome!!"));
     }
 
     public void DeRegister(SocketInstance instance)
