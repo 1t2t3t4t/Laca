@@ -5,6 +5,8 @@ namespace Laca.Api.Socket;
 
 public interface ISocketManager
 {
+    IEnumerable<Guid> GetCurrentConnections();
+    
     void Register(SocketInstance instance);
     void DeRegister(SocketInstance instance);
 }
@@ -13,6 +15,8 @@ public class SocketManager : ISocketManager
 {
     // Socket Guid -> Socket Instance
     private readonly ConcurrentDictionary<Guid, SocketInstance> _connectedInstances = new();
+
+    public IEnumerable<Guid> GetCurrentConnections() => _connectedInstances.Keys;
 
     public async void Register(SocketInstance instance)
     {
@@ -28,7 +32,10 @@ public class SocketManager : ISocketManager
 
     public void DeRegister(SocketInstance instance)
     {
-        _connectedInstances.Remove(instance.Id, out _);
+        if (_connectedInstances.Remove(instance.Id, out var removed))
+        {
+            removed.Dispose();
+        }
         Console.WriteLine($"DeRegister {instance.Id}");
     }
 }

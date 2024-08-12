@@ -1,13 +1,13 @@
-using System.Collections.Concurrent;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading.Channels;
 using Laca.Api.Models;
 
 namespace Laca.Api.Socket;
 
-public class SocketInstance(Guid id, WebSocket webSocket, ISocketManager socketManager)
+public sealed class SocketInstance(Guid id, WebSocket webSocket, ISocketManager socketManager) : IDisposable
 {
     private const uint BufferSize = 1024 * 4;
     
@@ -23,78 +23,116 @@ public class SocketInstance(Guid id, WebSocket webSocket, ISocketManager socketM
     };
     
     public Guid Id => id;
-    public bool Closed { get; private set; } = false;
 
-    private readonly ConcurrentQueue<string> _pendingPushMessages = new();
+    private readonly Channel<string> _sendingMessageChannel = Channel.CreateUnbounded<string>();
+    private readonly CancellationTokenSource _cancellationSrc = new();
     private Task? _sendingTask;
     
     public async Task Run()
     {
         _sendingTask = Task.Run(async () =>
         {
-            while (!Closed)
+            try
             {
-                while (_pendingPushMessages.TryDequeue(out var msg))
-                {
-                    var textBytes = Encoding.UTF8.GetBytes(msg);
-                    await webSocket.SendAsync(textBytes, WebSocketMessageType.Text, true, CancellationToken.None);
-                }
+                await SendingLoop(_cancellationSrc.Token);
             }
-        });
+            catch (Exception e)
+            {
+                await Close(WebSocketCloseStatus.InternalServerError, $"Socket sending error {e}");
+            }
+            Console.WriteLine("Ended sending loop");
+        }, _cancellationSrc.Token);
 
-        while (true)
+        try
         {
-            var message = await ReceiveMessage();
-            switch (message)
+            while (!_cancellationSrc.IsCancellationRequested)
             {
-                case SuccessResult success:
+                var message = await ReceiveMessage(_cancellationSrc.Token);
+                switch (message)
                 {
-                    await Task.Delay(300);
-                    await SendMessage(SocketMessageHelper.CommitMessage(Role.Bot, success.Message));
-                    break;
-                }
-                case CloseResult close:
-                {
-                    await Close(close.Status, close.Description);
-                    _sendingTask = null;
-                    return;
+                    case SuccessResult success:
+                    {
+                        await SendMessage(SocketMessageHelper.CommitMessage(Role.Bot, success.Message));
+                        break;
+                    }
+                    case CloseResult close:
+                    {
+                        await Close(close.Status, close.Description);
+                        return;
+                    }
                 }
             }
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine($"Closing socket {id}. Socket loop error {e}");
+            await Close(WebSocketCloseStatus.InternalServerError, $"Socket loop error {e}");
+            await _cancellationSrc.CancelAsync();
+        }
+    }
+
+    private async Task SendingLoop(CancellationToken cancellationToken)
+    {
+        while (!_cancellationSrc.IsCancellationRequested)
+        {
+            var msg = await _sendingMessageChannel.Reader.ReadAsync(cancellationToken);
+            if (msg.Contains("Error"))
+            {
+                throw new Exception("Test error");
+            }
+            var textBytes = Encoding.UTF8.GetBytes(msg);
+            await webSocket.SendAsync(textBytes, WebSocketMessageType.Text, true, cancellationToken);
         }
     }
     
     private async Task Close(WebSocketCloseStatus status, string description)
     {
-        Closed = true;
-        if (_sendingTask != null) await _sendingTask;
-        await webSocket.CloseAsync(
-            status,
-            description,
-            CancellationToken.None);
-        socketManager.DeRegister(this);
+        if (_cancellationSrc.IsCancellationRequested) return;
+        
+        try
+        {
+            Console.WriteLine($"Closing socket {id}");
+            await _cancellationSrc.CancelAsync();
+            await webSocket.CloseAsync(
+                status,
+                description,
+                CancellationToken.None);
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine($"Closing Socket error {e}");
+        }
+        finally
+        {
+            _sendingMessageChannel.Writer.Complete();
+            socketManager.DeRegister(this);
+        }
     }
 
     public async Task SendMessage<T>(SocketMessage<T> message)
     {
+        var cancellationToken = _cancellationSrc.Token;
         using var memStream = new MemoryStream();
-        await JsonSerializer.SerializeAsync(memStream, message, SerializerOptions);
+        
+        await JsonSerializer.SerializeAsync(memStream, message, SerializerOptions, cancellationToken);
         memStream.Seek(0, SeekOrigin.Begin);
+        
         using var reader = new StreamReader(memStream, Encoding.UTF8);
-        var content = await reader.ReadToEndAsync();
-        SendMessageString(content);
+        var content = await reader.ReadToEndAsync(cancellationToken);
+        await SendMessageString(content);
     }
 
-    private void SendMessageString(string text)
+    private async Task SendMessageString(string text)
     {
-        _pendingPushMessages.Enqueue(text);
+        await _sendingMessageChannel.Writer.WriteAsync(text);
     }
 
-    private async Task<ReadResult> ReceiveMessage()
+    private async Task<ReadResult> ReceiveMessage(CancellationToken cancellationToken)
     {
         var resultString = "";
         var buffer = new byte[BufferSize];
         var receiveResult = await webSocket.ReceiveAsync(
-            new ArraySegment<byte>(buffer), CancellationToken.None);
+            new ArraySegment<byte>(buffer), cancellationToken);
 
         while (!receiveResult.CloseStatus.HasValue)
         {
@@ -107,7 +145,7 @@ public class SocketInstance(Guid id, WebSocket webSocket, ISocketManager socketM
             
             buffer = new byte[BufferSize];
             receiveResult = await webSocket.ReceiveAsync(
-                new ArraySegment<byte>(buffer), CancellationToken.None);
+                new ArraySegment<byte>(buffer), cancellationToken);
         }
 
         if (receiveResult.CloseStatus.HasValue)
@@ -116,5 +154,17 @@ public class SocketInstance(Guid id, WebSocket webSocket, ISocketManager socketM
         }
 
         return new SuccessResult(resultString);
+    }
+
+    public async void Dispose()
+    {
+        if (_sendingTask != null)
+        {
+            await _sendingTask;
+            _sendingTask?.Dispose();
+        }
+
+        webSocket.Dispose();
+        _cancellationSrc.Dispose();
     }
 }
