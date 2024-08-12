@@ -7,7 +7,7 @@ public static class SocketMessageHelper
         return new SocketMessage<CommitMessage>
         {
             Action = SocketAction.CommitMessage,
-            Content = new CommitMessage
+            DynContent = new CommitMessage
             {
                 Role = role,
                 Message = message
